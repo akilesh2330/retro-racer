@@ -6,6 +6,7 @@
 <title>Retro Racer - J2ME Edition</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+
   html, body {
     height: 100%;
     background: #0d0d0d;
@@ -15,7 +16,7 @@
     overflow: hidden;
     font-family: 'Courier New', Courier, monospace;
   }
-  /* Pixel-perfect scaling: the 240x320 canvas is drawn at crisp pixels and scaled up with nearest-neighbor */
+
   #game {
     image-rendering: -moz-crisp-edges;
     image-rendering: pixelated;
@@ -26,13 +27,20 @@
     border: 4px solid #333;
     box-shadow: 0 0 0 4px #111, 0 0 40px rgba(0,0,0,0.8);
   }
+
   @media (max-width: 520px) {
-    #game { width: 92vw; height: calc(92vw * 640 / 480); }
+    #game {
+      width: 92vw;
+      height: calc(92vw * 640 / 480);
+    }
   }
 </style>
 </head>
+
 <body>
+
 <canvas id="game" width="240" height="320"></canvas>
+
 <script>
 (function () {
   "use strict";
@@ -40,132 +48,322 @@
   // ---------------------------------------------------------------------------
   // Retro Racer - J2ME Edition
   // Pure Canvas + vanilla JS, single file, no external assets.
-  // Emulates a 240x320 Java mobile phone racing game.
   // ---------------------------------------------------------------------------
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
-  // Disable anti-aliasing for jagged retro edges
+
   ctx.imageSmoothingEnabled = false;
 
   const W = 240;
   const H = 320;
 
-  // ---- Limited retro palette (J2ME-era 256-color style) ---------------------
+  // ---------------------------------------------------------------------------
+  // COLORS
+  // ---------------------------------------------------------------------------
+
   const C = {
-    sky:        "#0a3a0a",
-    grass1:     "#006600",
-    grass2:     "#007700",
-    road:       "#4d4d4d",
-    roadEdgeL:  "#ffcc00",   // white/yellow road edge strips
-    roadEdgeR:  "#ffcc00",
-    dash:       "#ffffff",
-    carRed:     "#cc0000",
+    sky: "#0a3a0a",
+    grass1: "#006600",
+    grass2: "#007700",
+    road: "#4d4d4d",
+    roadEdgeL: "#ffcc00",
+    roadEdgeR: "#ffcc00",
+    dash: "#ffffff",
+
+    carRed: "#cc0000",
     carRedDark: "#770000",
-    carRedGlass:"#66bbdd",
-    carBlue:    "#0000cc",
-    carBlueDark:"#000077",
-    carBlueGlass:"#aaddff",
-    carYellow:  "#eecc00",
-    carYellowDark:"#aa8800",
-    carYellowGlass:"#ffffff",
-    black:      "#000000",
-    white:      "#ffffff",
-    hudBg:      "#000000",
-    hudText:    "#ffaa00",
-    green:      "#00ff00",
-    red:        "#ff3333",
-    wheel:      "#111111"
+    carRedGlass: "#66bbdd",
+
+    carBlue: "#0000cc",
+    carBlueDark: "#000077",
+    carBlueGlass: "#aaddff",
+
+    carYellow: "#eecc00",
+    carYellowDark: "#aa8800",
+    carYellowGlass: "#ffffff",
+
+    black: "#000000",
+    white: "#ffffff",
+
+    hudBg: "#000000",
+    hudText: "#ffaa00",
+
+    green: "#00ff00",
+    red: "#ff3333",
+
+    wheel: "#111111"
   };
 
-  // ---- Road geometry ---------------------------------------------------------
-  const GRASS_W = 32;                    // grass on each side
-  const ROAD_X = GRASS_W;                // left edge of the road
-  const ROAD_W = W - GRASS_W * 2;        // 176 px road
+  // ---------------------------------------------------------------------------
+  // ROAD GEOMETRY
+  // ---------------------------------------------------------------------------
+
+  const GRASS_W = 32;
+  const ROAD_X = GRASS_W;
+  const ROAD_W = W - GRASS_W * 2;
+
   const LANE_COUNT = 3;
-  const LANE_W = ROAD_W / LANE_COUNT;    // ~58.7 px per lane
-  const HUD_H = 26;                      // top HUD strip height
+  const LANE_W = ROAD_W / LANE_COUNT;
+
+  const HUD_H = 26;
 
   function laneCenter(lane) {
     return ROAD_X + lane * LANE_W + LANE_W / 2;
   }
 
-  // ---- Game state ------------------------------------------------------------
-  const STATE = { TITLE: 0, PLAY: 1, OVER: 2 };
+  // ---------------------------------------------------------------------------
+  // GAME STATE
+  // ---------------------------------------------------------------------------
+
+  const STATE = {
+    TITLE: 0,
+    PLAY: 1,
+    OVER: 2
+  };
+
   let state = STATE.TITLE;
 
   let score = 0;
-  let speed = 0;           // current scroll speed (px/frame), 1.5 - 4.5
+
+  let speed = 0;
+
   const SPEED_MIN = 1.8;
   const SPEED_MAX = 4.6;
-  let dashOffset = 0;      // for animating road dashes
+
+  let dashOffset = 0;
   let grassOffset = 0;
   let frame = 0;
 
-  // Player car (3 lanes, positioned by a float lane index)
+  // ---------------------------------------------------------------------------
+  // PLAYER
+  // ---------------------------------------------------------------------------
+
   const player = {
-    lane: 1,               // target lane 0..2
-    x: 0,                  // smoothed pixel x
+    lane: 1,
+
+    // Actual pixel position.
+    // This smoothly moves toward the selected lane.
+    x: 0,
+
     y: H - 72,
+
     w: 26,
     h: 42,
+
     steerL: false,
     steerR: false,
+
     accel: false,
     brake: false
   };
 
-  // Enemy cars
-  let enemies = [];
-  let spawnTimer = 0;
-  let spawnInterval = 52; // frames between spawns (decreases with speed)
-  const DODGE_SCORE = 10;  // extra points per dodged enemy
+  // ---------------------------------------------------------------------------
+  // ENEMIES
+  // ---------------------------------------------------------------------------
 
-  // ---- Input: arrow keys simulate old mobile keypad 4 / 6 ---------------------
+  let enemies = [];
+
+  let spawnTimer = 0;
+
+  let spawnInterval = 52;
+
+  const DODGE_SCORE = 10;
+
+  // ---------------------------------------------------------------------------
+  // INPUT
+  // ---------------------------------------------------------------------------
+
   const keys = Object.create(null);
+
+  /*
+   * IMPORTANT FIX:
+   *
+   * Previously ArrowLeft / ArrowRight were stored as:
+   *
+   *     keys.left = true
+   *     keys.right = true
+   *
+   * and the update loop continuously moved the car while those values
+   * were true.
+   *
+   * That caused the player to hold the key for a long time.
+   *
+   * Now:
+   *
+   *     ONE LEFT PRESS  = ONE LANE LEFT
+   *     ONE RIGHT PRESS = ONE LANE RIGHT
+   *
+   * Browser key-repeat is also ignored using e.repeat.
+   */
+
   window.addEventListener("keydown", function (e) {
-    if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," ","Enter"].indexOf(e.key) >= 0) {
+
+    if (
+      [
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowUp",
+        "ArrowDown",
+        " ",
+        "Enter"
+      ].indexOf(e.key) >= 0
+    ) {
       e.preventDefault();
     }
-    if (e.key === "ArrowLeft")  keys.left = true;
-    if (e.key === "ArrowRight") keys.right = true;
-    if (e.key === "ArrowUp")    keys.up = true;
-    if (e.key === "ArrowDown")  keys.down = true;
-    if (e.key === " " || e.key === "Enter") pressAction();
+
+    // ---------------------------------------------------------
+    // ONE PRESS = ONE LANE CHANGE
+    // ---------------------------------------------------------
+
+    if (!e.repeat && state === STATE.PLAY) {
+
+      if (e.key === "ArrowLeft") {
+
+        // Move one lane to the left.
+        player.lane = Math.max(
+          0,
+          player.lane - 1
+        );
+
+        player.steerL = true;
+        player.steerR = false;
+
+      } else if (e.key === "ArrowRight") {
+
+        // Move one lane to the right.
+        player.lane = Math.min(
+          LANE_COUNT - 1,
+          player.lane + 1
+        );
+
+        player.steerR = true;
+        player.steerL = false;
+      }
+    }
+
+    // Speed controls remain continuous.
+    if (e.key === "ArrowUp") {
+      keys.up = true;
+    }
+
+    if (e.key === "ArrowDown") {
+      keys.down = true;
+    }
+
+    // Start / restart.
+    if (e.key === " " || e.key === "Enter") {
+      pressAction();
+    }
   });
+
   window.addEventListener("keyup", function (e) {
-    if (e.key === "ArrowLeft")  keys.left = false;
-    if (e.key === "ArrowRight") keys.right = false;
-    if (e.key === "ArrowUp")    keys.up = false;
-    if (e.key === "ArrowDown")  keys.down = false;
+
+    if (e.key === "ArrowUp") {
+      keys.up = false;
+    }
+
+    if (e.key === "ArrowDown") {
+      keys.down = false;
+    }
   });
+
+  // ---------------------------------------------------------------------------
+  // ACTION
+  // ---------------------------------------------------------------------------
 
   function pressAction() {
-    if (state === STATE.TITLE) { startGame(); }
-    else if (state === STATE.OVER) { state = STATE.TITLE; score = 0; }
+
+    if (state === STATE.TITLE) {
+
+      startGame();
+
+    } else if (state === STATE.OVER) {
+
+      state = STATE.TITLE;
+      score = 0;
+    }
   }
 
-  // Touch support: tap left/right halves to steer, tap twice to start
+  // ---------------------------------------------------------------------------
+  // TOUCH / POINTER CONTROL
+  // ---------------------------------------------------------------------------
+
+  /*
+   * Touch control also uses ONE TAP = ONE LANE CHANGE.
+   *
+   * Left half  -> one lane left
+   * Right half -> one lane right
+   */
+
   canvas.addEventListener("pointerdown", function (e) {
+
+    e.preventDefault();
+
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    if (state === STATE.TITLE || state === STATE.OVER) { pressAction(); return; }
-    keys.left = x < 0.5;
-    keys.right = x >= 0.5;
-  });
-  canvas.addEventListener("pointerup", function () {
-    keys.left = false;
-    keys.right = false;
+
+    const x =
+      (e.clientX - rect.left) /
+      rect.width;
+
+    // Start / restart.
+    if (
+      state === STATE.TITLE ||
+      state === STATE.OVER
+    ) {
+      pressAction();
+      return;
+    }
+
+    // ---------------------------------------------------------
+    // LEFT SIDE
+    // ---------------------------------------------------------
+
+    if (x < 0.5) {
+
+      player.lane = Math.max(
+        0,
+        player.lane - 1
+      );
+
+      player.steerL = true;
+      player.steerR = false;
+
+    }
+
+    // ---------------------------------------------------------
+    // RIGHT SIDE
+    // ---------------------------------------------------------
+
+    else {
+
+      player.lane = Math.min(
+        LANE_COUNT - 1,
+        player.lane + 1
+      );
+
+      player.steerR = true;
+      player.steerL = false;
+    }
   });
 
-  // ---- Helpers ---------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // HELPERS
+  // ---------------------------------------------------------------------------
+
   function randInt(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+
+    return Math.floor(
+      Math.random() * (max - min + 1)
+    ) + min;
   }
 
-  // Chunky pseudo pixel font: blocky 4x5 glyphs.
-  // Each glyph is an array of 5 rows, each row is a 4-bit number (bit 3 = left).
+  // ---------------------------------------------------------------------------
+  // PIXEL FONT
+  // ---------------------------------------------------------------------------
+
   const FONT = {
+
     "0": [0b0110, 0b1001, 0b1001, 0b1001, 0b0110],
     "1": [0b0010, 0b0110, 0b0010, 0b0010, 0b0111],
     "2": [0b0110, 0b1001, 0b0010, 0b0100, 0b1111],
@@ -176,6 +374,7 @@
     "7": [0b1111, 0b0001, 0b0010, 0b0100, 0b0100],
     "8": [0b0110, 0b1001, 0b0110, 0b1001, 0b0110],
     "9": [0b0110, 0b1001, 0b0111, 0b0001, 0b0110],
+
     "A": [0b0110, 0b1001, 0b1111, 0b1001, 0b1001],
     "B": [0b1110, 0b1001, 0b1110, 0b1001, 0b1110],
     "C": [0b0111, 0b1000, 0b1000, 0b1000, 0b0111],
@@ -202,6 +401,7 @@
     "X": [0b1001, 0b0110, 0b0110, 0b0110, 0b1001],
     "Y": [0b1001, 0b0110, 0b0100, 0b0100, 0b0100],
     "Z": [0b1111, 0b0010, 0b0100, 0b1000, 0b1111],
+
     ":": [0b0000, 0b0100, 0b0000, 0b0100, 0b0000],
     "/": [0b0001, 0b0010, 0b0100, 0b1000, 0b0000],
     ".": [0b0000, 0b0000, 0b0000, 0b0000, 0b0100],
@@ -209,375 +409,1201 @@
     "!": [0b0100, 0b0100, 0b0100, 0b0000, 0b0100]
   };
 
+  // ---------------------------------------------------------------------------
+  // DRAW CHARACTER
+  // ---------------------------------------------------------------------------
+
   function drawChar(ch, x, y, color, scale) {
+
     scale = scale || 1;
+
     const glyph = FONT[ch.toUpperCase()];
-    if (!glyph) return 2 * scale * 3;
+
+    if (!glyph) {
+      return 2 * scale * 3;
+    }
+
     for (let row = 0; row < 5; row++) {
+
       for (let col = 0; col < 4; col++) {
-        if (glyph[row] & (1 << (3 - col))) {
+
+        if (
+          glyph[row] &
+          (1 << (3 - col))
+        ) {
+
           ctx.fillStyle = color;
-          ctx.fillRect(x + col * scale, y + row * scale, scale, scale);
+
+          ctx.fillRect(
+            x + col * scale,
+            y + row * scale,
+            scale,
+            scale
+          );
         }
       }
     }
-    return 4 * scale + 1; // advance
+
+    return 4 * scale + 1;
   }
 
-  function drawText(str, x, y, color, scale, rightAlign) {
+  // ---------------------------------------------------------------------------
+  // DRAW TEXT
+  // ---------------------------------------------------------------------------
+
+  function drawText(
+    str,
+    x,
+    y,
+    color,
+    scale,
+    rightAlign
+  ) {
+
     scale = scale || 1;
+
     let px = x;
+
     if (rightAlign) {
-      // measure width
+
       let w = 0;
+
       for (let i = 0; i < str.length; i++) {
-        const g = FONT[str[i].toUpperCase()];
-        w += g ? 4 * scale + 1 : 2 * scale;
+
+        const g =
+          FONT[str[i].toUpperCase()];
+
+        w += g
+          ? 4 * scale + 1
+          : 2 * scale;
       }
+
       px = x - w;
     }
+
     for (let i = 0; i < str.length; i++) {
-      const g = FONT[str[i].toUpperCase()];
-      px += drawChar(str[i], px, y, color, scale);
+
+      px += drawChar(
+        str[i],
+        px,
+        y,
+        color,
+        scale
+      );
     }
+
     return px - x;
   }
 
+  // ---------------------------------------------------------------------------
+  // TEXT WIDTH
+  // ---------------------------------------------------------------------------
+
   function textWidth(str, scale) {
+
     scale = scale || 1;
+
     let w = 0;
+
     for (let i = 0; i < str.length; i++) {
-      const g = FONT[str[i].toUpperCase()];
-      w += g ? 4 * scale + 1 : 2 * scale;
+
+      const g =
+        FONT[str[i].toUpperCase()];
+
+      w += g
+        ? 4 * scale + 1
+        : 2 * scale;
     }
+
     return w;
   }
 
-  // ---- Drawing: blocky cars ----------------------------------------------------
-  // Cars are drawn from pure rectangles, 3 colors: body, dark shade, glass.
-  // Facing down means viewed from above; nose points toward bottom for player.
+  // ---------------------------------------------------------------------------
+  // DRAW CAR
+  // ---------------------------------------------------------------------------
 
-  function drawCar(cx, cy, w, h, body, shade, glass, facingDown, steer) {
-    // steer: -1 left tilt, 0 straight, 1 right tilt (skews the wheels)
-    const leftW = steer === -1 ? 2 : 0;
-    const rightW = steer === 1 ? 2 : 0;
+  function drawCar(
+    cx,
+    cy,
+    w,
+    h,
+    body,
+    shade,
+    glass,
+    facingDown,
+    steer
+  ) {
 
-    // Body (main hull)
+    const leftW =
+      steer === -1 ? 2 : 0;
+
+    const rightW =
+      steer === 1 ? 2 : 0;
+
+    // Body
     ctx.fillStyle = body;
-    ctx.fillRect(cx - w/2, cy - h/2, w, h);
 
-    // Dark lower-left shading band (faux 3D)
+    ctx.fillRect(
+      cx - w / 2,
+      cy - h / 2,
+      w,
+      h
+    );
+
+    // Dark lower shading
     ctx.fillStyle = shade;
-    ctx.fillRect(cx - w/2, cy + h/4, w, h/4);
 
-    // Glass windscreen
+    ctx.fillRect(
+      cx - w / 2,
+      cy + h / 4,
+      w,
+      h / 4
+    );
+
+    // Glass
     ctx.fillStyle = glass;
+
     if (facingDown) {
-      ctx.fillRect(cx - w/2 + 4, cy - h/2 + 8, w - 8, 10); // front windshield
-      ctx.fillRect(cx - w/2 + 5, cy + h/2 - 14, w - 10, 6); // rear window
+
+      ctx.fillRect(
+        cx - w / 2 + 4,
+        cy - h / 2 + 8,
+        w - 8,
+        10
+      );
+
+      ctx.fillRect(
+        cx - w / 2 + 5,
+        cy + h / 2 - 14,
+        w - 10,
+        6
+      );
+
     } else {
-      ctx.fillRect(cx - w/2 + 4, cy + h/2 - 18, w - 8, 10);
-      ctx.fillRect(cx - w/2 + 5, cy - h/2 + 8, w - 10, 6);
+
+      ctx.fillRect(
+        cx - w / 2 + 4,
+        cy + h / 2 - 18,
+        w - 8,
+        10
+      );
+
+      ctx.fillRect(
+        cx - w / 2 + 5,
+        cy - h / 2 + 8,
+        w - 10,
+        6
+      );
     }
 
-    // Wheels (4 black blocks)
+    // Wheels
     ctx.fillStyle = C.wheel;
-    const ww = 4, wh = 10;
+
+    const ww = 4;
+    const wh = 10;
+
     if (facingDown) {
-      ctx.fillRect(cx - w/2 - ww + leftW,  cy - h/2 + 6,  ww, wh); // front left
-      ctx.fillRect(cx + w/2        - rightW, cy - h/2 + 6,  ww, wh); // front right
-      ctx.fillRect(cx - w/2 - ww - leftW,  cy + h/2 - 16, ww, wh); // rear left
-      ctx.fillRect(cx + w/2        + rightW, cy + h/2 - 16, ww, wh); // rear right
+
+      ctx.fillRect(
+        cx - w / 2 - ww + leftW,
+        cy - h / 2 + 6,
+        ww,
+        wh
+      );
+
+      ctx.fillRect(
+        cx + w / 2 - rightW,
+        cy - h / 2 + 6,
+        ww,
+        wh
+      );
+
+      ctx.fillRect(
+        cx - w / 2 - ww - leftW,
+        cy + h / 2 - 16,
+        ww,
+        wh
+      );
+
+      ctx.fillRect(
+        cx + w / 2 + rightW,
+        cy + h / 2 - 16,
+        ww,
+        wh
+      );
+
     } else {
-      ctx.fillRect(cx - w/2 - ww + leftW,  cy - h/2 + 6,  ww, wh);
-      ctx.fillRect(cx + w/2        - rightW, cy - h/2 + 6,  ww, wh);
-      ctx.fillRect(cx - w/2 - ww - leftW,  cy + h/2 - 16, ww, wh);
-      ctx.fillRect(cx + w/2        + rightW, cy + h/2 - 16, ww, wh);
+
+      ctx.fillRect(
+        cx - w / 2 - ww + leftW,
+        cy - h / 2 + 6,
+        ww,
+        wh
+      );
+
+      ctx.fillRect(
+        cx + w / 2 - rightW,
+        cy - h / 2 + 6,
+        ww,
+        wh
+      );
+
+      ctx.fillRect(
+        cx - w / 2 - ww - leftW,
+        cy + h / 2 - 16,
+        ww,
+        wh
+      );
+
+      ctx.fillRect(
+        cx + w / 2 + rightW,
+        cy + h / 2 - 16,
+        ww,
+        wh
+      );
     }
 
-    // Nose line highlight
+    // Nose highlight
     ctx.fillStyle = "#ffffff";
+
     if (facingDown) {
-      ctx.fillRect(cx - 1, cy - h/2, 2, 3);
+
+      ctx.fillRect(
+        cx - 1,
+        cy - h / 2,
+        2,
+        3
+      );
+
     } else {
-      ctx.fillRect(cx - 1, cy + h/2 - 3, 2, 3);
+
+      ctx.fillRect(
+        cx - 1,
+        cy + h / 2 - 3,
+        2,
+        3
+      );
     }
   }
 
-  // ---- Drawing: environment -----------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // BACKGROUND
+  // ---------------------------------------------------------------------------
+
   function drawBackground() {
-    // Grass (alternating vertical stripes, scrolling)
+
     const stripeW = 16;
-    for (let x = 0; x < GRASS_W; x += stripeW) {
-      ctx.fillStyle = (Math.floor((x + grassOffset) / stripeW) % 2 === 0) ? C.grass1 : C.grass2;
-      ctx.fillRect(x, HUD_H, stripeW, H - HUD_H);
-      ctx.fillRect(W - GRASS_W + x, HUD_H, stripeW, H - HUD_H);
+
+    // Grass
+    for (
+      let x = 0;
+      x < GRASS_W;
+      x += stripeW
+    ) {
+
+      ctx.fillStyle =
+        (
+          Math.floor(
+            (x + grassOffset) / stripeW
+          ) % 2 === 0
+        )
+          ? C.grass1
+          : C.grass2;
+
+      ctx.fillRect(
+        x,
+        HUD_H,
+        stripeW,
+        H - HUD_H
+      );
+
+      ctx.fillRect(
+        W - GRASS_W + x,
+        HUD_H,
+        stripeW,
+        H - HUD_H
+      );
     }
-    // Grass texture dots (very sparse, retro feel)
+
+    // Grass texture
     ctx.fillStyle = "#009900";
-    for (let y = HUD_H; y < H; y += 40) {
-      const gy = (y + Math.floor(grassOffset / 8)) % (H - HUD_H) + HUD_H;
+
+    for (
+      let y = HUD_H;
+      y < H;
+      y += 40
+    ) {
+
+      const gy =
+        (
+          y +
+          Math.floor(grassOffset / 8)
+        ) %
+        (H - HUD_H) +
+        HUD_H;
+
       ctx.fillRect(8, gy, 2, 2);
       ctx.fillRect(20, gy + 18, 2, 2);
-      ctx.fillRect(W - 10, gy + 8, 2, 2);
-      ctx.fillRect(W - 24, gy + 24, 2, 2);
+
+      ctx.fillRect(
+        W - 10,
+        gy + 8,
+        2,
+        2
+      );
+
+      ctx.fillRect(
+        W - 24,
+        gy + 24,
+        2,
+        2
+      );
     }
 
     // Road
     ctx.fillStyle = C.road;
-    ctx.fillRect(ROAD_X, HUD_H, ROAD_W, H - HUD_H);
 
-    // Road edges (white stripes with yellow dashes)
-    for (let y = HUD_H; y < H; y += 16) {
-      const yy = (y + Math.floor(dashOffset)) % 16;
-      ctx.fillStyle = ((y + Math.floor(dashOffset)) % 32 < 16) ? C.white : C.roadEdgeL;
-      ctx.fillRect(ROAD_X, y + yy, 3, 16);
-      ctx.fillRect(ROAD_X + ROAD_W - 3, y + yy, 3, 16);
+    ctx.fillRect(
+      ROAD_X,
+      HUD_H,
+      ROAD_W,
+      H - HUD_H
+    );
+
+    // Road edges
+    for (
+      let y = HUD_H;
+      y < H;
+      y += 16
+    ) {
+
+      const yy =
+        (
+          y +
+          Math.floor(dashOffset)
+        ) % 16;
+
+      ctx.fillStyle =
+        (
+          (
+            y +
+            Math.floor(dashOffset)
+          ) % 32 < 16
+        )
+          ? C.white
+          : C.roadEdgeL;
+
+      ctx.fillRect(
+        ROAD_X,
+        y + yy,
+        3,
+        16
+      );
+
+      ctx.fillRect(
+        ROAD_X + ROAD_W - 3,
+        y + yy,
+        3,
+        16
+      );
     }
 
-    // Center dashed lane markers (3 lanes -> 2 dividers)
+    // Lane dividers
     ctx.fillStyle = C.dash;
-    const dashH = 14, dashGap = 18;
-    for (let d = 1; d < LANE_COUNT; d++) {
-      const dx = Math.round(ROAD_X + d * LANE_W) - 1;
-      for (let y = HUD_H; y < H; y += dashH + dashGap) {
-        const yy = (y + dashOffset) % (dashH + dashGap);
-        ctx.fillRect(dx, y + yy, 2, dashH);
+
+    const dashH = 14;
+    const dashGap = 18;
+
+    for (
+      let d = 1;
+      d < LANE_COUNT;
+      d++
+    ) {
+
+      const dx =
+        Math.round(
+          ROAD_X + d * LANE_W
+        ) - 1;
+
+      for (
+        let y = HUD_H;
+        y < H;
+        y += dashH + dashGap
+      ) {
+
+        const yy =
+          (
+            y + dashOffset
+          ) %
+          (dashH + dashGap);
+
+        ctx.fillRect(
+          dx,
+          y + yy,
+          2,
+          dashH
+        );
       }
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // HUD
+  // ---------------------------------------------------------------------------
+
   function drawHUD() {
-    // Black HUD strip
+
     ctx.fillStyle = C.hudBg;
-    ctx.fillRect(0, 0, W, HUD_H);
 
-    // SCORE (chunky pixel font, 2x scale)
-    drawText("SCORE:" + score, 4, 4, C.hudText, 2);
+    ctx.fillRect(
+      0,
+      0,
+      W,
+      HUD_H
+    );
 
-    // SPEED indicator (km/h-ish value)
-    const kmh = Math.round(speed * 30);
-    drawText(kmh + "KM/H", W - 4, 4, C.hudText, 2, true);
+    // Score
+    drawText(
+      "SCORE:" + score,
+      4,
+      4,
+      C.hudText,
+      2
+    );
 
-    // Speed bar (blocky 5 segments)
-    const bars = Math.min(5, Math.round(speed));
+    // Speed
+    const kmh =
+      Math.round(speed * 30);
+
+    drawText(
+      kmh + "KM/H",
+      W - 4,
+      4,
+      C.hudText,
+      2,
+      true
+    );
+
+    // Speed bar
+    const bars =
+      Math.min(
+        5,
+        Math.round(speed)
+      );
+
     for (let i = 0; i < 5; i++) {
-      ctx.fillStyle = i < bars ? C.green : "#222222";
-      ctx.fillRect(W - 30 + i * 5, 20, 3, 4);
+
+      ctx.fillStyle =
+        i < bars
+          ? C.green
+          : "#222222";
+
+      ctx.fillRect(
+        W - 30 + i * 5,
+        20,
+        3,
+        4
+      );
     }
   }
 
-  // ---- Game logic ---------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // START GAME
+  // ---------------------------------------------------------------------------
+
   function startGame() {
+
     state = STATE.PLAY;
+
     score = 0;
+
     speed = SPEED_MIN;
+
     player.lane = 1;
+
     player.x = laneCenter(1);
+
     player.y = H - 72;
+
     player.steerL = false;
     player.steerR = false;
+
+    keys.up = false;
+    keys.down = false;
+
     enemies = [];
+
     spawnTimer = 0;
+
     frame = 0;
   }
+
+  // ---------------------------------------------------------------------------
+  // GAME OVER
+  // ---------------------------------------------------------------------------
 
   function gameOver() {
     state = STATE.OVER;
   }
 
+  // ---------------------------------------------------------------------------
+  // COLLISION
+  // ---------------------------------------------------------------------------
+
   function rectsCollide(a, b) {
-    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+    return (
+      a.x < b.x + b.w &&
+      a.x + a.w > b.x &&
+      a.y < b.y + b.h &&
+      a.y + a.h > b.y
+    );
   }
 
+  // ---------------------------------------------------------------------------
+  // UPDATE GAME
+  // ---------------------------------------------------------------------------
+
   function update(dt) {
+
     frame++;
 
-    if (state !== STATE.PLAY) return;
+    if (state !== STATE.PLAY) {
+      return;
+    }
 
-    // ---- Speed control (Up/Down)
+    // ---------------------------------------------------------
+    // SPEED CONTROL
+    // ---------------------------------------------------------
+
     if (keys.up) {
-      speed = Math.min(SPEED_MAX, speed + 0.012);
+
+      speed =
+        Math.min(
+          SPEED_MAX,
+          speed + 0.012
+        );
+
     } else if (keys.down) {
-      speed = Math.max(SPEED_MIN, speed - 0.03);
+
+      speed =
+        Math.max(
+          SPEED_MIN,
+          speed - 0.03
+        );
+
     } else {
-      // natural idle cruise, slow drift back to baseline
-      if (speed > SPEED_MIN + 0.4) speed -= 0.004;
-      else if (speed < SPEED_MIN) speed += 0.005;
+
+      if (
+        speed >
+        SPEED_MIN + 0.4
+      ) {
+
+        speed -= 0.004;
+
+      } else if (
+        speed < SPEED_MIN
+      ) {
+
+        speed += 0.005;
+      }
     }
 
-    // ---- Steering (Left/Right, simulating keypad 4 and 6)
-    // Smooth lane transition with stiff arcade feel
-    const targetX = laneCenter(player.lane);
-    const moveSpeed = 2.6 + speed * 0.35;
-    if (keys.left) {
-      player.x -= moveSpeed;
-      player.steerL = true;
-      player.steerR = false;
-      if (player.x <= laneCenter(0)) {
-        player.x = laneCenter(0);
-        player.lane = 0;
-      }
-    } else if (keys.right) {
-      player.x += moveSpeed;
-      player.steerR = true;
-      player.steerL = false;
-      if (player.x >= laneCenter(2)) {
-        player.x = laneCenter(2);
-        player.lane = 2;
-      }
+    // ---------------------------------------------------------
+    // STEERING
+    // ---------------------------------------------------------
+
+    /*
+     * FIXED STEERING SYSTEM
+     *
+     * player.lane contains the selected lane.
+     *
+     * 0 = LEFT
+     * 1 = CENTER
+     * 2 = RIGHT
+     *
+     * The player.x position smoothly follows that lane.
+     *
+     * This allows:
+     *
+     * LEFT -> CENTER
+     * CENTER -> LEFT
+     * CENTER -> RIGHT
+     * RIGHT -> CENTER
+     *
+     * with one key press.
+     */
+
+    const targetX =
+      laneCenter(player.lane);
+
+    const laneMoveSpeed = 0.22;
+
+    const distance =
+      targetX - player.x;
+
+    if (
+      Math.abs(distance) > 0.25
+    ) {
+
+      player.x +=
+        distance * laneMoveSpeed;
+
     } else {
-      // snap to nearest lane center
-      if (Math.abs(player.x - targetX) > 0.5) {
-        player.x += Math.sign(targetX - player.x) * Math.min(Math.abs(targetX - player.x), 2.2);
-      }
+
+      player.x = targetX;
+
       player.steerL = false;
       player.steerR = false;
     }
 
-    // ---- Scrolling illusion
-    dashOffset = (dashOffset + speed) % 32;
-    grassOffset = (grassOffset + speed * 1.4) % 32;
+    // ---------------------------------------------------------
+    // SCROLLING
+    // ---------------------------------------------------------
 
-    // ---- Score: increases continuously while driving
+    dashOffset =
+      (dashOffset + speed) % 32;
+
+    grassOffset =
+      (grassOffset + speed * 1.4) % 32;
+
+    // ---------------------------------------------------------
+    // SCORE
+    // ---------------------------------------------------------
+
     score += Math.round(speed);
 
-    // ---- Enemy spawning
+    // ---------------------------------------------------------
+    // ENEMY SPAWNING
+    // ---------------------------------------------------------
+
     spawnTimer++;
-    const interval = Math.max(24, spawnInterval - Math.floor((speed - SPEED_MIN) * 20));
+
+    const interval =
+      Math.max(
+        24,
+        spawnInterval -
+        Math.floor(
+          (speed - SPEED_MIN) * 20
+        )
+      );
+
     if (spawnTimer >= interval) {
+
       spawnTimer = 0;
-      const lane = randInt(0, 2);
-      const type = Math.random() < 0.5 ? "blue" : "yellow";
-      const eSpeed = speed * randInt(2, 5) / 4; // enemies move down slightly slower/faster mix
+
+      const lane =
+        randInt(0, 2);
+
+      const type =
+        Math.random() < 0.5
+          ? "blue"
+          : "yellow";
+
+      const eSpeed =
+        speed *
+        randInt(2, 5) / 4;
+
       enemies.push({
+
         lane: lane,
+
         x: laneCenter(lane),
+
         y: -50,
+
         w: 26,
+
         h: 42,
+
         type: type,
+
         speed: eSpeed,
+
         dodged: false
       });
     }
 
-    // ---- Update enemies + collisions
-    for (let i = enemies.length - 1; i >= 0; i--) {
-      const e = enemies[i];
-      e.y += e.speed + speed * 0.35;
+    // ---------------------------------------------------------
+    // ENEMY UPDATE + COLLISION
+    // ---------------------------------------------------------
 
-      // Collision with player (slightly forgiving inner box)
-      const pBox = { x: player.x - player.w/2 + 4, y: player.y - player.h/2 + 4, w: player.w - 8, h: player.h - 8 };
-      const eBox = { x: e.x - e.w/2 + 4, y: e.y - e.h/2 + 4, w: e.w - 8, h: e.h - 8 };
-      if (rectsCollide(pBox, eBox)) {
+    for (
+      let i = enemies.length - 1;
+      i >= 0;
+      i--
+    ) {
+
+      const e = enemies[i];
+
+      e.y +=
+        e.speed +
+        speed * 0.35;
+
+      // Player collision box
+      const pBox = {
+
+        x:
+          player.x -
+          player.w / 2 +
+          4,
+
+        y:
+          player.y -
+          player.h / 2 +
+          4,
+
+        w:
+          player.w - 8,
+
+        h:
+          player.h - 8
+      };
+
+      // Enemy collision box
+      const eBox = {
+
+        x:
+          e.x -
+          e.w / 2 +
+          4,
+
+        y:
+          e.y -
+          e.h / 2 +
+          4,
+
+        w:
+          e.w - 8,
+
+        h:
+          e.h - 8
+      };
+
+      if (
+        rectsCollide(
+          pBox,
+          eBox
+        )
+      ) {
+
         gameOver();
         return;
       }
 
-      // Award points for dodging
-      if (!e.dodged && e.y > player.y + player.h/2) {
+      // Dodged enemy
+      if (
+        !e.dodged &&
+        e.y >
+        player.y +
+        player.h / 2
+      ) {
+
         e.dodged = true;
+
         score += DODGE_SCORE;
       }
 
-      // Remove off-screen
-      if (e.y > H + 60) enemies.splice(i, 1);
+      // Remove enemy
+      if (
+        e.y >
+        H + 60
+      ) {
+
+        enemies.splice(i, 1);
+      }
     }
   }
 
-  // ---- Rendering ---------------------------------------------------------------
-  function drawTitle() {
-    drawBackground();
-    // Dark overlay for readability
-    ctx.fillStyle = "rgba(0,0,0,0.65)";
-    ctx.fillRect(0, HUD_H, W, H - HUD_H);
+  // ---------------------------------------------------------------------------
+  // TITLE SCREEN
+  // ---------------------------------------------------------------------------
 
-    // Title block
-    drawText("RETRO", W/2 - textWidth("RETRO", 3)/2, 60, "#ff3333", 3);
-    drawText("RACER", W/2 - textWidth("RACER", 3)/2, 60 + 20, "#ffaa00", 3);
-    drawText("J2ME EDITION", W/2 - textWidth("J2ME EDITION", 2)/2, 116, "#00ff00", 2);
+  function drawTitle() {
+
+    drawBackground();
+
+    // Dark overlay
+    ctx.fillStyle =
+      "rgba(0,0,0,0.65)";
+
+    ctx.fillRect(
+      0,
+      HUD_H,
+      W,
+      H - HUD_H
+    );
+
+    // Title
+    drawText(
+      "RETRO",
+      W / 2 -
+      textWidth("RETRO", 3) / 2,
+      60,
+      "#ff3333",
+      3
+    );
+
+    drawText(
+      "RACER",
+      W / 2 -
+      textWidth("RACER", 3) / 2,
+      80,
+      "#ffaa00",
+      3
+    );
+
+    drawText(
+      "J2ME EDITION",
+      W / 2 -
+      textWidth(
+        "J2ME EDITION",
+        2
+      ) / 2,
+      116,
+      "#00ff00",
+      2
+    );
 
     // Decorative cars
-    drawCar(laneCenter(1), 180, 26, 42, C.carRed, C.carRedDark, C.carRedGlass, true, 0);
-    drawCar(laneCenter(0), 230, 26, 42, C.carBlue, C.carBlueDark, C.carBlueGlass, false, 0);
-    drawCar(laneCenter(2), 230, 26, 42, C.carYellow, C.carYellowDark, C.carYellowGlass, false, 0);
+    drawCar(
+      laneCenter(1),
+      180,
+      26,
+      42,
+      C.carRed,
+      C.carRedDark,
+      C.carRedGlass,
+      true,
+      0
+    );
 
-    // Blinking start text
-    if (Math.floor(frame / 28) % 2 === 0) {
-      drawText("PRESS SPACE TO START", W/2 - textWidth("PRESS SPACE TO START", 1)/2, 286, "#ffffff", 1);
+    drawCar(
+      laneCenter(0),
+      230,
+      26,
+      42,
+      C.carBlue,
+      C.carBlueDark,
+      C.carBlueGlass,
+      false,
+      0
+    );
+
+    drawCar(
+      laneCenter(2),
+      230,
+      26,
+      42,
+      C.carYellow,
+      C.carYellowDark,
+      C.carYellowGlass,
+      false,
+      0
+    );
+
+    // Start text
+    if (
+      Math.floor(frame / 28) % 2 === 0
+    ) {
+
+      drawText(
+        "PRESS SPACE TO START",
+        W / 2 -
+        textWidth(
+          "PRESS SPACE TO START",
+          1
+        ) / 2,
+        286,
+        "#ffffff",
+        1
+      );
     }
-    drawText("ARROWS: STEER/SPEED", W/2 - textWidth("ARROWS: STEER/SPEED", 1)/2, 302, "#888888", 1);
+
+    drawText(
+      "ARROWS: STEER/SPEED",
+      W / 2 -
+      textWidth(
+        "ARROWS: STEER/SPEED",
+        1
+      ) / 2,
+      302,
+      "#888888",
+      1
+    );
   }
 
+  // ---------------------------------------------------------------------------
+  // GAME OVER SCREEN
+  // ---------------------------------------------------------------------------
+
   function drawGameOver() {
-    // Freeze the playfield
+
+    // Freeze playfield
     drawBackground();
-    for (let i = 0; i < enemies.length; i++) drawEnemy(enemies[i]);
+
+    for (
+      let i = 0;
+      i < enemies.length;
+      i++
+    ) {
+
+      drawEnemy(
+        enemies[i]
+      );
+    }
+
     drawPlayer();
+
     drawHUD();
 
-    // Explosion flicker on crash
-    if (Math.floor(frame / 6) % 2 === 0) {
+    // Explosion
+    if (
+      Math.floor(frame / 6) % 2 === 0
+    ) {
+
       ctx.fillStyle = "#ff6600";
-      ctx.fillRect(player.x - 20, player.y - 26, 40, 52);
+
+      ctx.fillRect(
+        player.x - 20,
+        player.y - 26,
+        40,
+        52
+      );
+
       ctx.fillStyle = "#ffcc00";
-      ctx.fillRect(player.x - 12, player.y - 18, 24, 36);
+
+      ctx.fillRect(
+        player.x - 12,
+        player.y - 18,
+        24,
+        36
+      );
     }
 
     // Dark panel
-    ctx.fillStyle = "rgba(0,0,0,0.8)";
-    ctx.fillRect(20, 90, W - 40, 140);
-    ctx.fillStyle = C.hudText;
-    ctx.fillRect(20, 90, W - 40, 2);
-    ctx.fillRect(20, 228, W - 40, 2);
+    ctx.fillStyle =
+      "rgba(0,0,0,0.8)";
 
-    drawText("GAME OVER", W/2 - textWidth("GAME OVER", 2)/2, 110, "#ff3333", 2);
-    drawText("SCORE: " + score, W/2 - textWidth("SCORE: " + score, 2)/2, 146, "#ffaa00", 2);
-    drawText("SPEED: " + Math.round(speed * 30) + " KM/H", W/2 - textWidth("SPEED: " + Math.round(speed * 30) + " KM/H", 1)/2, 176, "#ffffff", 1);
+    ctx.fillRect(
+      20,
+      90,
+      W - 40,
+      140
+    );
 
-    if (Math.floor(frame / 28) % 2 === 0) {
-      drawText("PRESS SPACE TO CONTINUE", W/2 - textWidth("PRESS SPACE TO CONTINUE", 1)/2, 206, "#888888", 1);
+    ctx.fillStyle =
+      C.hudText;
+
+    ctx.fillRect(
+      20,
+      90,
+      W - 40,
+      2
+    );
+
+    ctx.fillRect(
+      20,
+      228,
+      W - 40,
+      2
+    );
+
+    drawText(
+      "GAME OVER",
+      W / 2 -
+      textWidth(
+        "GAME OVER",
+        2
+      ) / 2,
+      110,
+      "#ff3333",
+      2
+    );
+
+    drawText(
+      "SCORE: " + score,
+      W / 2 -
+      textWidth(
+        "SCORE: " + score,
+        2
+      ) / 2,
+      146,
+      "#ffaa00",
+      2
+    );
+
+    drawText(
+      "SPEED: " +
+      Math.round(speed * 30) +
+      " KM/H",
+      W / 2 -
+      textWidth(
+        "SPEED: " +
+        Math.round(speed * 30) +
+        " KM/H",
+        1
+      ) / 2,
+      176,
+      "#ffffff",
+      1
+    );
+
+    if (
+      Math.floor(frame / 28) % 2 === 0
+    ) {
+
+      drawText(
+        "PRESS SPACE TO CONTINUE",
+        W / 2 -
+        textWidth(
+          "PRESS SPACE TO CONTINUE",
+          1
+        ) / 2,
+        206,
+        "#888888",
+        1
+      );
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // DRAW ENEMY
+  // ---------------------------------------------------------------------------
 
   function drawEnemy(e) {
+
     if (e.type === "blue") {
-      drawCar(e.x, e.y, e.w, e.h, C.carBlue, C.carBlueDark, C.carBlueGlass, false, 0);
+
+      drawCar(
+        e.x,
+        e.y,
+        e.w,
+        e.h,
+        C.carBlue,
+        C.carBlueDark,
+        C.carBlueGlass,
+        false,
+        0
+      );
+
     } else {
-      drawCar(e.x, e.y, e.w, e.h, C.carYellow, C.carYellowDark, C.carYellowGlass, false, 0);
+
+      drawCar(
+        e.x,
+        e.y,
+        e.w,
+        e.h,
+        C.carYellow,
+        C.carYellowDark,
+        C.carYellowGlass,
+        false,
+        0
+      );
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // DRAW PLAYER
+  // ---------------------------------------------------------------------------
+
   function drawPlayer() {
-    const steer = player.steerL ? -1 : (player.steerR ? 1 : 0);
-    drawCar(player.x, player.y, player.w, player.h, C.carRed, C.carRedDark, C.carRedGlass, true, steer);
+
+    const steer =
+      player.steerL
+        ? -1
+        : (
+            player.steerR
+              ? 1
+              : 0
+          );
+
+    drawCar(
+      player.x,
+      player.y,
+      player.w,
+      player.h,
+      C.carRed,
+      C.carRedDark,
+      C.carRedGlass,
+      true,
+      steer
+    );
   }
 
+  // ---------------------------------------------------------------------------
+  // DRAW PLAY SCREEN
+  // ---------------------------------------------------------------------------
+
   function drawPlay() {
+
     drawBackground();
-    for (let i = 0; i < enemies.length; i++) drawEnemy(enemies[i]);
+
+    for (
+      let i = 0;
+      i < enemies.length;
+      i++
+    ) {
+
+      drawEnemy(
+        enemies[i]
+      );
+    }
+
     drawPlayer();
+
     drawHUD();
   }
 
-  // Main loop: fixed 16ms-ish steps, but game logic reads frame counter so speed feels consistent
-  let lastTime = 0;
-  function loop(now) {
-    const dt = now - lastTime;
-    lastTime = now;
-    // cap to avoid big jumps after tab-switch
-    if (dt < 120) update(dt);
+  // ---------------------------------------------------------------------------
+  // MAIN GAME LOOP
+  // ---------------------------------------------------------------------------
 
-    ctx.clearRect(0, 0, W, H);
-    if (state === STATE.TITLE) drawTitle();
-    else if (state === STATE.PLAY) drawPlay();
-    else drawGameOver();
+  let lastTime = 0;
+
+  function loop(now) {
+
+    const dt =
+      now - lastTime;
+
+    lastTime = now;
+
+    // Avoid large jumps after tab switching.
+    if (dt < 120) {
+      update(dt);
+    }
+
+    ctx.clearRect(
+      0,
+      0,
+      W,
+      H
+    );
+
+    if (
+      state === STATE.TITLE
+    ) {
+
+      drawTitle();
+
+    } else if (
+      state === STATE.PLAY
+    ) {
+
+      drawPlay();
+
+    } else {
+
+      drawGameOver();
+    }
 
     requestAnimationFrame(loop);
   }
+
   requestAnimationFrame(loop);
+
 })();
 </script>
+
 </body>
 </html>

@@ -127,8 +127,8 @@ export function MapView({
 
   const init = usePersistFn(async () => {
     await loadMapScript();
-    if (!mapContainer.current || !window.google) {
-      console.error("Map container or Google Maps not found");
+    if (!mapContainer.current) {
+      console.error("Map container not found");
       return;
     }
     map.current = new window.google.maps.Map(mapContainer.current, {
